@@ -3,6 +3,7 @@
 #include <iostream>
 #include <omp.h>
 #include <png.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <vector>
@@ -11,11 +12,51 @@ struct RGB {
   int r, g, b;
 };
 
+struct ThreadArgs {
+  std::vector<std::vector<int>> &input;
+  std::vector<std::vector<int>> &output;
+  std::vector<std::vector<int>> &kernelSizes;
+  int height;
+  int width;
+};
+
 double calculateLuminance(const RGB &pixel) {
   return 0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b;
 }
 
 int determineKernelSize(double brightness) { return brightness > 128 ? 10 : 5; }
+
+void *pApplyFilterToChannel(void *arg) {
+  ThreadArgs thread_arg = *(ThreadArgs *)arg;
+  std::vector<std::vector<int>> &input = thread_arg.input;
+  std::vector<std::vector<int>> &output = thread_arg.output;
+  std::vector<std::vector<int>> &kernelSizes = thread_arg.kernelSizes;
+  int height = thread_arg.height;
+  int width = thread_arg.width;
+
+  for (int x = 0; x < height; x++) {
+#pragma omp parallel for
+    for (int y = 0; y < width; y++) {
+      int kernelSize = kernelSizes[x][y];
+      int kernelRadius = kernelSize / 2;
+      double sum = 0.0;
+      double filteredPixel = 0.0;
+
+      for (int i = -kernelRadius; i <= kernelRadius; i++) {
+        for (int j = -kernelRadius; j <= kernelRadius; j++) {
+          int pixelX = std::min(std::max(x + i, 0), height - 1);
+          int pixelY = std::min(std::max(y + j, 0), width - 1);
+          filteredPixel += input[pixelX][pixelY];
+          sum += 1.0;
+        }
+      }
+
+      output[x][y] = static_cast<int>(filteredPixel / sum);
+    }
+  }
+
+  return (void *)0;
+}
 
 void applyFilterToChannel(const std::vector<std::vector<int>> &input,
                           std::vector<std::vector<int>> &output,
@@ -85,17 +126,36 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   std::vector<std::vector<int>> tempGreen(height, std::vector<int>(width));
   std::vector<std::vector<int>> tempBlue(height, std::vector<int>(width));
 
-#pragma omp sections default(shared)
-  {
-#pragma omp section
-    { applyFilterToChannel(redChannel, tempRed, kernelSizes, height, width); }
-#pragma omp section
-    {
-      applyFilterToChannel(greenChannel, tempGreen, kernelSizes, height, width);
-    }
-#pragma omp section
-    { applyFilterToChannel(blueChannel, tempBlue, kernelSizes, height, width); }
-  }
+  ThreadArgs redArgs = {redChannel, tempRed, kernelSizes, height, width};
+  ThreadArgs greenArgs = {greenChannel, tempGreen, kernelSizes, height, width};
+  ThreadArgs blueArgs = {blueChannel, tempBlue, kernelSizes, height, width};
+
+  pthread_t red_thread;
+  pthread_t green_thread;
+  pthread_t blue_thread;
+
+  pthread_create(&red_thread, NULL, pApplyFilterToChannel, &redArgs);
+  pthread_create(&green_thread, NULL, pApplyFilterToChannel, &greenArgs);
+  pthread_create(&blue_thread, NULL, pApplyFilterToChannel, &blueArgs);
+
+  pthread_join(red_thread, nullptr);
+  pthread_join(green_thread, nullptr);
+  pthread_join(blue_thread, nullptr);
+
+  // #pragma omp sections default(shared)
+  //   {
+  // #pragma omp section
+  //     { applyFilterToChannel(redChannel, tempRed, kernelSizes, height,
+  //     width); }
+  // #pragma omp section
+  //     {
+  //       applyFilterToChannel(greenChannel, tempGreen, kernelSizes,
+  //       height, width);
+  //     }
+  // #pragma omp section
+  //     { applyFilterToChannel(blueChannel, tempBlue, kernelSizes, height,
+  //     width); }
+  //   }
 
   for (int x = 0; x < height; x++) {
 #pragma omp parallel for
