@@ -22,6 +22,7 @@ void applyFilterToChannel(const std::vector<std::vector<int>> &input,
                           const std::vector<std::vector<int>> &kernelSizes,
                           int height, int width) {
   for (int x = 0; x < height; x++) {
+#pragma omp parallel for
     for (int y = 0; y < width; y++) {
       int kernelSize = kernelSizes[x][y];
       int kernelRadius = kernelSize / 2;
@@ -84,19 +85,9 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   std::vector<std::vector<int>> tempGreen(height, std::vector<int>(width));
   std::vector<std::vector<int>> tempBlue(height, std::vector<int>(width));
 
-#pragma omp sections
-  {
-#pragma omp section
-    { applyFilterToChannel(redChannel, tempRed, kernelSizes, height, width); }
-
-#pragma omp section
-    {
-      applyFilterToChannel(greenChannel, tempGreen, kernelSizes, height, width);
-    }
-
-#pragma omp section
-    { applyFilterToChannel(blueChannel, tempBlue, kernelSizes, height, width); }
-  }
+  applyFilterToChannel(redChannel, tempRed, kernelSizes, height, width);
+  applyFilterToChannel(greenChannel, tempGreen, kernelSizes, height, width);
+  applyFilterToChannel(blueChannel, tempBlue, kernelSizes, height, width);
 
   for (int x = 0; x < height; x++) {
 #pragma omp parallel for
