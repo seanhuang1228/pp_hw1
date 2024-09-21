@@ -85,9 +85,17 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   std::vector<std::vector<int>> tempGreen(height, std::vector<int>(width));
   std::vector<std::vector<int>> tempBlue(height, std::vector<int>(width));
 
-  applyFilterToChannel(redChannel, tempRed, kernelSizes, height, width);
-  applyFilterToChannel(greenChannel, tempGreen, kernelSizes, height, width);
-  applyFilterToChannel(blueChannel, tempBlue, kernelSizes, height, width);
+#pragma omp sections
+  {
+#pragma omp section
+    { applyFilterToChannel(redChannel, tempRed, kernelSizes, height, width); }
+#pragma omp section
+    {
+      applyFilterToChannel(greenChannel, tempGreen, kernelSizes, height, width);
+    }
+#pragma omp section
+    { applyFilterToChannel(blueChannel, tempBlue, kernelSizes, height, width); }
+  }
 
   for (int x = 0; x < height; x++) {
 #pragma omp parallel for
