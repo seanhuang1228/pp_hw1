@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <vector>
-// #include <pthread.h>
 
 struct RGB {
   int r, g, b;
@@ -85,9 +84,19 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   std::vector<std::vector<int>> tempGreen(height, std::vector<int>(width));
   std::vector<std::vector<int>> tempBlue(height, std::vector<int>(width));
 
-  applyFilterToChannel(redChannel, tempRed, kernelSizes, height, width);
-  applyFilterToChannel(greenChannel, tempGreen, kernelSizes, height, width);
-  applyFilterToChannel(blueChannel, tempBlue, kernelSizes, height, width);
+#pragma omp sections
+  {
+#pragma omp section
+    { applyFilterToChannel(redChannel, tempRed, kernelSizes, height, width); }
+
+#pragma omp section
+    {
+      applyFilterToChannel(greenChannel, tempGreen, kernelSizes, height, width);
+    }
+
+#pragma omp section
+    { applyFilterToChannel(blueChannel, tempBlue, kernelSizes, height, width); }
+  }
 
   for (int x = 0; x < height; x++) {
 #pragma omp parallel for
@@ -278,23 +287,23 @@ int main(int argc, char **argv) {
 
   std::vector<std::vector<RGB>> outputImage(height, std::vector<RGB>(width));
 
-  // auto start = std::chrono::high_resolution_clock::now();
+  auto start = std::chrono::high_resolution_clock::now();
 
   adaptiveFilterRGB(inputImage, outputImage, height, width);
   // adaptiveFilterRGB_parallel(inputImage, outputImage, height, width);
 
-  // auto end = std::chrono::high_resolution_clock::now();
+  auto end = std::chrono::high_resolution_clock::now();
 
-  // std::chrono::duration<double> elapsed_seconds = end - start;
-  // std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0 << "
-  // ms" << std::endl;
+  std::chrono::duration<double> elapsed_seconds = end - start;
+  std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0
+            << " ms " << std::endl;
 
   write_png_file(output_file, outputImage);
 
-  // auto end_all = std::chrono::high_resolution_clock::now();
-  // elapsed_seconds = end_all - start_all;
-  // std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0 <<
-  // " ms" << std::endl;
+  auto end_all = std::chrono::high_resolution_clock::now();
+  elapsed_seconds = end_all - start;
+  std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0
+            << " ms" << std::endl;
 
   return 0;
 }
