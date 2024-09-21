@@ -3,6 +3,7 @@
 #include <iostream>
 #include <omp.h>
 #include <png.h>
+#include <pngconf.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -126,6 +127,7 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   std::vector<std::vector<int>> tempGreen(height, std::vector<int>(width));
   std::vector<std::vector<int>> tempBlue(height, std::vector<int>(width));
 
+  /*
   ThreadArgs redArgs = {redChannel, tempRed, kernelSizes, height, width};
   ThreadArgs greenArgs = {greenChannel, tempGreen, kernelSizes, height, width};
   ThreadArgs blueArgs = {blueChannel, tempBlue, kernelSizes, height, width};
@@ -141,21 +143,19 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   pthread_join(red_thread, nullptr);
   pthread_join(green_thread, nullptr);
   pthread_join(blue_thread, nullptr);
+  */
 
-  // #pragma omp sections default(shared)
-  //   {
-  // #pragma omp section
-  //     { applyFilterToChannel(redChannel, tempRed, kernelSizes, height,
-  //     width); }
-  // #pragma omp section
-  //     {
-  //       applyFilterToChannel(greenChannel, tempGreen, kernelSizes,
-  //       height, width);
-  //     }
-  // #pragma omp section
-  //     { applyFilterToChannel(blueChannel, tempBlue, kernelSizes, height,
-  //     width); }
-  //   }
+#pragma omp sections
+  {
+#pragma omp section
+    { applyFilterToChannel(redChannel, tempRed, kernelSizes, height, width); }
+#pragma omp section
+    {
+      applyFilterToChannel(greenChannel, tempGreen, kernelSizes, height, width);
+    }
+#pragma omp section
+    { applyFilterToChannel(blueChannel, tempBlue, kernelSizes, height, width); }
+  }
 
   for (int x = 0; x < height; x++) {
 #pragma omp parallel for
@@ -239,9 +239,11 @@ void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
 
   png_read_update_info(png, info);
 
+  png_byte *one_malloc =
+      (png_byte *)malloc(png_get_rowbytes(png, info) * height);
   png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
   for (int y = 0; y < height; y++) {
-    row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png, info));
+    row_pointers[y] = &one_malloc[y * width];
   }
 
   png_read_image(png, row_pointers);
@@ -304,9 +306,12 @@ void write_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
                PNG_FILTER_TYPE_DEFAULT);
   png_write_info(png, info);
 
+  long long rowbytes = png_get_rowbytes(png, info);
+  png_byte *one_malloc =
+      (png_byte *)malloc(png_get_rowbytes(png, info) * height);
   png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
   for (int y = 0; y < height; y++) {
-    row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png, info));
+    row_pointers[y] = &one_malloc[y * width];
     for (int x = 0; x < width; x++) {
       row_pointers[y][x * 3] = image[y][x].r;
       row_pointers[y][x * 3 + 1] = image[y][x].g;
