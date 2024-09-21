@@ -85,7 +85,7 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   std::vector<std::vector<int>> tempGreen(height, std::vector<int>(width));
   std::vector<std::vector<int>> tempBlue(height, std::vector<int>(width));
 
-#pragma omp sections
+#pragma omp sections default(shared)
   {
 #pragma omp section
     { applyFilterToChannel(redChannel, tempRed, kernelSizes, height, width); }
