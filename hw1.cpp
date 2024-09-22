@@ -239,11 +239,13 @@ void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
 
   png_read_update_info(png, info);
 
-  int byte_width = png_get_rowbytes(png, info);
-  png_byte *one_malloc = (png_byte *)malloc(byte_width * height);
+  // int byte_width = png_get_rowbytes(png, info);
+  // png_byte *one_malloc = (png_byte *)malloc(byte_width * height);
   png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
+  std::cerr << png_get_rowbytes(png, info) << '\n';
   for (int y = 0; y < height; y++) {
-    row_pointers[y] = &one_malloc[y * byte_width];
+    // row_pointers[y] = &one_malloc[y * byte_width];
+    row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png, info));
   }
 
   png_read_image(png, row_pointers);
@@ -306,11 +308,13 @@ void write_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
                PNG_FILTER_TYPE_DEFAULT);
   png_write_info(png, info);
 
-  long long rowbytes = png_get_rowbytes(png, info);
-  png_byte *one_malloc = (png_byte *)malloc(rowbytes * height);
+  // long long rowbytes = png_get_rowbytes(png, info);
+  // png_byte *one_malloc = (png_byte *)malloc(rowbytes * height);
   png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
+  std::cerr << png_get_rowbytes(png, info) << '\n';
   for (int y = 0; y < height; y++) {
-    row_pointers[y] = &one_malloc[y * rowbytes];
+    // row_pointers[y] = &one_malloc[y * rowbytes];
+    row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png, info));
     for (int x = 0; x < width; x++) {
       row_pointers[y][x * 3] = image[y][x].r;
       row_pointers[y][x * 3 + 1] = image[y][x].g;
