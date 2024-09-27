@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <chrono>
+#include <cstring>
+#include <fcntl.h>
 #include <iostream>
 #include <omp.h>
 #include <png.h>
@@ -7,6 +9,9 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 struct RGB {
@@ -26,6 +31,15 @@ double calculateLuminance(const RGB &pixel) {
 }
 
 int determineKernelSize(double brightness) { return brightness > 128 ? 10 : 5; }
+
+void read_from_memory(png_structp png_ptr, png_bytep out_byte,
+                      png_size_t byte_count_to_read) {
+  void *src = (void *)png_get_io_ptr(png_ptr);
+  void *des = (void *)out_byte;
+  const size_t byte_read = (size_t)byte_count_to_read;
+
+  memcpy(des, src, byte_read);
+}
 
 void *pApplyFilterToChannel(void *arg) {
   ThreadArgs thread_arg = *(ThreadArgs *)arg;
@@ -145,7 +159,7 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   pthread_join(blue_thread, nullptr);
   */
 
-#pragma omp sections
+#pragma omp parallel sections
   {
 #pragma omp section
     { applyFilterToChannel(redChannel, tempRed, kernelSizes, height, width); }
@@ -180,36 +194,25 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
 }
 
 void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
-  FILE *fp = fopen(file_name, "rb");
-  if (!fp) {
-    std::cerr << "Error: Cannot open file " << file_name << std::endl;
-    exit(EXIT_FAILURE);
-  }
+  // FILE *fp = fopen(file_name, "rb");
+  int fdin = open(file_name, O_RDONLY);
+  struct stat statbuf;
+
+  fstat(fdin, &statbuf);
+  void *io_ptr = mmap(0, statbuf.st_size, PROT_READ, MAP_SHARED, fdin, 0);
 
   png_structp png =
       png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
-  if (!png) {
-    std::cerr << "Error: Cannot create PNG read structure" << std::endl;
-    fclose(fp);
-    exit(EXIT_FAILURE);
-  }
-
   png_infop info = png_create_info_struct(png);
-  if (!info) {
-    std::cerr << "Error: Cannot create PNG info structure" << std::endl;
-    png_destroy_read_struct(&png, nullptr, nullptr);
-    fclose(fp);
-    exit(EXIT_FAILURE);
-  }
 
   if (setjmp(png_jmpbuf(png))) {
     std::cerr << "Error during PNG creation" << std::endl;
     png_destroy_read_struct(&png, &info, nullptr);
-    fclose(fp);
+    close(fdin);
     exit(EXIT_FAILURE);
   }
 
-  png_init_io(png, fp);
+  png_set_read_fn(png, io_ptr, read_from_memory);
   png_read_info(png, info);
 
   int width = png_get_image_width(png, info);
@@ -239,18 +242,15 @@ void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
 
   png_read_update_info(png, info);
 
-  // int byte_width = png_get_rowbytes(png, info);
-  // png_byte *one_malloc = (png_byte *)malloc(byte_width * height);
   png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
   std::cerr << png_get_rowbytes(png, info) << '\n';
   for (int y = 0; y < height; y++) {
-    // row_pointers[y] = &one_malloc[y * byte_width];
     row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png, info));
   }
 
   png_read_image(png, row_pointers);
 
-  fclose(fp);
+  close(fdin);
 
   image.resize(height, std::vector<RGB>(width));
   for (int y = 0; y < height; y++) {
@@ -361,16 +361,16 @@ int main(int argc, char **argv) {
 
   auto end = std::chrono::high_resolution_clock::now();
 
-  std::chrono::duration<double> elapsed_seconds = end - start;
-  std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0
-            << " ms " << std::endl;
+  // std::chrono::duration<double> elapsed_seconds = end - start;
+  // std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0
+  //           << " ms " << std::endl;
 
   write_png_file(output_file, outputImage);
 
-  auto end_all = std::chrono::high_resolution_clock::now();
-  elapsed_seconds = end_all - start;
-  std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0
-            << " ms" << std::endl;
+  // auto end_all = std::chrono::high_resolution_clock::now();
+  // elapsed_seconds = end_all - start;
+  // std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0
+  //           << " ms" << std::endl;
 
   return 0;
 }
