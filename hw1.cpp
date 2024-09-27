@@ -34,9 +34,11 @@ int determineKernelSize(double brightness) { return brightness > 128 ? 10 : 5; }
 
 void read_from_memory(png_structp png_ptr, png_bytep out_byte,
                       png_size_t byte_count_to_read) {
-  void *src = (void *)png_get_io_ptr(png_ptr);
+  void **src = (void **)png_get_io_ptr(png_ptr);
   void *des = (void *)out_byte;
   const size_t byte_read = (size_t)byte_count_to_read;
+
+  *(long long *)src += (size_t)byte_count_to_read;
 
   memcpy(des, src, byte_read);
 }
@@ -212,6 +214,7 @@ void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
     exit(EXIT_FAILURE);
   }
 
+  png_set_sig_bytes(png, 0);
   png_set_read_fn(png, io_ptr, read_from_memory);
   png_read_info(png, info);
 
