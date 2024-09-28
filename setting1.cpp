@@ -20,8 +20,8 @@ void applyFilterToChannel(const std::vector<std::vector<int>> &input,
                           std::vector<std::vector<int>> &output,
                           const std::vector<std::vector<int>> &kernelSizes,
                           int height, int width) {
+#pragma omp parallel for num_threads(8)
   for (int x = 0; x < height; x++) {
-#pragma omp parallel for num_threads(5)
     for (int y = 0; y < width; y++) {
       int kernelSize = kernelSizes[x][y];
       int kernelRadius = kernelSize / 2;
@@ -47,6 +47,7 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   std::vector<std::vector<int>> greenChannel(height, std::vector<int>(width));
   std::vector<std::vector<int>> blueChannel(height, std::vector<int>(width));
 
+#pragma omp parallel for num_threads(8)
   for (int x = 0; x < height; x++) {
     for (int y = 0; y < width; y++) {
       redChannel[x][y] = inputImage[x][y].r;
@@ -56,6 +57,7 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   }
 
   std::vector<std::vector<int>> kernelSizes(height, std::vector<int>(width));
+#pragma omp parallel for num_threads(8)
   for (int x = 0; x < height; x++) {
     for (int y = 0; y < width; y++) {
       double brightness = calculateLuminance(inputImage[x][y]);
@@ -71,6 +73,7 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   applyFilterToChannel(greenChannel, tempGreen, kernelSizes, height, width);
   applyFilterToChannel(blueChannel, tempBlue, kernelSizes, height, width);
 
+#pragma omp parallel for num_threads(8)
   for (int x = 0; x < height; x++) {
     for (int y = 0; y < width; y++) {
       outputImage[x][y].r = tempRed[x][y];
@@ -144,6 +147,7 @@ void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
   png_read_update_info(png, info);
   png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
 
+#pragma omp parallel for num_threads(8)
   for (int y = 0; y < height; y++) {
     row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png, info));
   }
@@ -153,6 +157,7 @@ void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
 
   image.resize(height, std::vector<RGB>(width));
 
+#pragma omp parallel for num_threads(8)
   for (int y = 0; y < height; y++) {
     png_bytep row = row_pointers[y];
     for (int x = 0; x < width; x++) {
@@ -208,6 +213,7 @@ void write_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
   png_write_info(png, info);
 
   png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
+#pragma omp parallel for num_threads(8)
   for (int y = 0; y < height; y++) {
     row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png, info));
     for (int x = 0; x < width; x++) {
@@ -219,6 +225,7 @@ void write_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
 
   png_write_image(png, row_pointers);
   png_write_end(png, nullptr);
+#pragma omp parallel for num_threads(8)
   for (int y = 0; y < height; y++) {
     free(row_pointers[y]);
   }
