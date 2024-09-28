@@ -4,10 +4,10 @@ CXXFLAGS = -std=c++11 -O3 -pthread -fopenmp
 all: hw1
 
 hw1: hw1.cpp
-	$(CXX) $(CXXFLAGS) -o hw1 hw1.cpp -lpng
+	$(CXX) $(CXXFLAGS) -o hw1 setting1.cpp -lpng
 
 test:
-	$(CXX) $(CXXFLAGS) -DDEBUG hw1 hw1.cpp -lpng
+	$(CXX) $(CXXFLAGS) -DDEBUG -o hw1 setting1.cpp -lpng
 
 clean:
 	rm -f hw1
