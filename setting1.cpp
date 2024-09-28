@@ -21,6 +21,7 @@ void applyFilterToChannel(const std::vector<std::vector<int>> &input,
                           const std::vector<std::vector<int>> &kernelSizes,
                           int height, int width) {
   for (int x = 0; x < height; x++) {
+#pragma omp parallel for num_threads(5)
     for (int y = 0; y < width; y++) {
       int kernelSize = kernelSizes[x][y];
       int kernelRadius = kernelSize / 2;
