@@ -26,18 +26,32 @@ void read_from_memory(png_structp png_ptr, png_bytep out_byte,
   void *des = (void *)out_byte;
   const size_t byte_read = (size_t)byte_count_to_read;
 
-  memcpy(des, *src, byte_read);
+  size_t share_size = byte_read / 8;
+  size_t remaining = byte_read % 8;
+#pragma omp parallel for num_threads(8)
+  for (int i = 0; i < 8; ++i) {
+    long long curr_src = *(long long *)src + share_size * i;
+    memcpy(des, (void *)src, share_size + (i == 7 ? remaining : 0));
+  }
+
   *(long long *)src += byte_read;
 }
 
-void write_from_memory(png_structp png_ptr, png_bytep out_byte,
-                       png_size_t byte_count_to_read) {
+void write_to_memory(png_structp png_ptr, png_bytep out_byte,
+                     png_size_t byte_count_to_read) {
   void **des = (void **)png_get_io_ptr(png_ptr);
   void *src = (void *)out_byte;
-  const size_t byte_read = (size_t)byte_count_to_read;
+  const size_t byte_write = (size_t)byte_count_to_read;
 
-  memcpy(*des, src, byte_read);
-  *(long long *)des += byte_read;
+  size_t share_size = byte_write / 8;
+  size_t remaining = byte_write % 8;
+#pragma omp parallel for num_threads(8)
+  for (int i = 0; i < 8; ++i) {
+    long long curr_des = *(long long *)des + share_size * i;
+    memcpy((void *)des, src, share_size + (i == 7 ? remaining : 0));
+  }
+
+  *(long long *)des += byte_write;
 }
 
 int determineKernelSize(double brightness) { return brightness > 128 ? 10 : 5; }
@@ -238,7 +252,7 @@ void write_png_file(char *file_name, std::vector<std::vector<RGB>> &image,
       mmap(0, statbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   void *io_ptr = start;
 
-  png_set_write_fn(png, &io_ptr, write_from_memory, NULL);
+  png_set_write_fn(png, &io_ptr, write_to_memory, NULL);
   png_set_IHDR(png, info, width, height, 8, PNG_COLOR_TYPE_RGB,
                PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
                PNG_FILTER_TYPE_DEFAULT);
