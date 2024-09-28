@@ -139,9 +139,10 @@ size_t read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
   }
 
   fstat(fd, &statbuf);
-  void *start = mmap(0, statbuf.st_size, PROT_READ, MAP_SHARED, fd, 8);
+  void *start = mmap(0, statbuf.st_size, PROT_READ, MAP_SHARED, fd, 0);
   void *io_ptr = start;
 
+  png_set_sig_bytes(png, 0);
   png_set_read_fn(png, &io_ptr, read_from_memory);
   png_read_info(png, info);
 
@@ -233,9 +234,6 @@ void write_png_file(char *file_name, std::vector<std::vector<RGB>> &image,
 
   ftruncate(fd, input_sz * 2);
   fstat(fd, &statbuf);
-#ifdef DEBUG
-  std::cerr << "new file size: " << statbuf.st_size << '\n';
-#endif
   void *start =
       mmap(0, statbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   void *io_ptr = start;
