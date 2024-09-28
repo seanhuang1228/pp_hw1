@@ -1,2 +1,10 @@
 /hw1
 *.png
+
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.pdf
+*.synctex.gz
