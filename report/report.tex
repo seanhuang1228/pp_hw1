@@ -1,0 +1,210 @@
+%! Tex program = lualatex
+\documentclass[12pt, a4paper]{article}
+
+\usepackage{luatexja-fontspec}
+\usepackage{listings}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{fancyhdr}
+\usepackage{setspace}
+\usepackage{hyperref}
+\usepackage{enumerate}
+\usepackage{stmaryrd}
+\usepackage[x11names]{xcolor}
+\usepackage[mathscr]{euscript}
+\usepackage{xparse}
+
+% Diagram
+\usepackage{tikz}
+\usetikzlibrary{positioning}
+
+% Plot
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+\newcommand{\curly}{\rightsquigarrow}
+\newcommand{\documentname}{HW1 - Report}
+\newcommand{\inlinebmatrix}[1]{
+  \big[\begin{smallmatrix}
+      #1
+  \end{smallmatrix}\big]
+}
+
+% environment for tikz diagram
+\makeatletter
+\NewDocumentEnvironment{centertikz}{m}
+{
+  \begin{figure}[!h]
+    \centering
+    \begin{tikzpicture}
+}
+{
+    \end{tikzpicture}
+    \caption{#1}
+  \end{figure}
+}
+\makeatother
+
+\makeatletter
+\renewcommand*\env@matrix[1][*\c@MaxMatrixCols c]{%
+  \hskip -\arraycolsep
+  \let\@ifnextchar\new@ifnextchar
+  \array{#1}}
+\makeatother
+
+\setmainjfont{Source Han Sans TW}
+
+\topmargin=0pt
+\headheight=15pt
+\headsep=25pt
+\footskip=20pt
+\marginparsep=0pt
+\marginparwidth=0pt
+\marginparpush=0pt
+\oddsidemargin=0pt
+\evensidemargin=0pt
+\textwidth=495pt
+\textheight=700pt
+\voffset=-20pt
+\hoffset=-21pt
+\onehalfspacing
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=RoyalBlue2,
+  urlcolor=RoyalBlue1,
+  pdftitle={\documentname}
+}
+
+\lstset{
+  basicstyle=\normalsize\ttfamily,
+  backgroundcolor=\color{Azure1},
+  showspaces=false,
+  showstringspaces=false,
+  showtabs=false,
+  tabsize=2,
+  captionpos=b,
+  breaklines=true,
+  breakatwhitespace=false,
+  keepspaces=true,
+  keywordstyle=\bfseries\color{Blue1},
+  commentstyle=\itshape\color{Red4},
+  stringstyle=\itshape\color{Green4},
+  frame=single,
+  rulecolor=\color{black},
+}
+
+% tikz diagram component
+\tikzset {
+states/.style={circle, draw, minimum size=15mm},
+accept/.style={circle, draw, double, minimum size=15mm},
+ptr/.style={->, >={stealth},},
+init/.style={circle},
+}
+
+\begin{document}
+\pagestyle{fancy}
+\fancyfoot[C]{\thepage}
+\fancyhead[L]{\documentname}
+\fancyhead[R]{b10902001 黃俊翔}
+\section*{Problem 1.}
+我試著以 openmp 進行了以下幾個部份的平行化：
+\begin{enumerate}
+  \item 針對 \lstinline{applyAdaptiveFilter} 函式所作的平行處理，就是把三個 \lstinline{applyAdaptiveFilter} 用三個 thread 來跑，可以獲得 $2\sim2.5$ 倍的效能提昇。
+  \item 針對所有的 for 迴圈去做平行化，都是開滿 8 個 thread 去跑，大約可以有 $3.5\sim5$ 倍的效能提昇，主要是在卷積的部份可以有很不錯的速度提昇。
+\end{enumerate}
+
+然而，當我把以上兩種作法合在一起後，速度卻依然維持在原本的 $2\sim2.5$ 倍，推測的原因有：
+\begin{enumerate}
+  \item 實際上在跑的時候會開啟
+    $$3\text{(from applyAdaptiveFilter)} + 8*3\text{(from the for-loop in applyAdaptiveFilter)}$$
+    個 thread，但我們實際上沒有那麼多核心來處理這麼多的 thread，而這樣開過多的 thread 造成了效能的浪費。
+  \item \lstinline{applyAdaptiveFilter} 是在對二維陣列這樣龐大的資料去做事，因此三個 thread 是有可能會去互相搶 cache、造成 locality 變差，使得速度無法顯著的提昇。
+\end{enumerate}
+
+因此，最後我只採用了第二種作法，也就是針對所有的 \lstinline{for-loop} 都開滿 8 個 thread 去跑。
+
+另外，以下為一些測試後的廢案，作為附錄供參考用：
+\subsection*{拆解 for-loop}
+我們可以看到在設定 RGB 的部份是長這樣的：
+\begin{lstlisting}
+for (int x = 0; x < height; x++) {
+  for (int y = 0; y < width; y++) {
+    redChannel[x][y] = inputImage[x][y].r;
+    greenChannel[x][y] = inputImage[x][y].g;
+    blueChannel[x][y] = inputImage[x][y].b;
+  }
+}
+\end{lstlisting}
+一開始我有懷疑過這樣做是否會導致三個 \lstinline{channel} 的陣列互相影響 locality，因此將陣列拆開後進行平行化：
+\begin{lstlisting}
+for (int x = 0; x < height; x++) {
+  for (int y = 0; y < width; y++) {
+    redChannel[x][y] = inputImage[x][y].r;
+  }
+}
+for (int x = 0; x < height; x++) {
+  for (int y = 0; y < width; y++) {
+    greenChannel[x][y] = inputImage[x][y].g;
+  }
+}
+for (int x = 0; x < height; x++) {
+  for (int y = 0; y < width; y++) {
+    blueChannel[x][y] = inputImage[x][y].b;
+  }
+}
+\end{lstlisting}
+但這麼做並沒有收到比較好的成果，思考了一下原因，認為是單純的對一個 channel 操作就已經破壞掉 locality 了（像是 \lstinline{redChannel} 跟 \lstinline{inputImage} 可能互相覆蓋 cache），導致拆開做跟一起做的差異並不明顯，甚至可能會導致編譯器優化變差。
+\subsection*{malloc}
+另一個觀察是在 read/write png 時去分配空間是使用 \lstinline{malloc} 來分配的，然而，原本範例的作法是一行一行去 \lstinline{malloc}，我質疑這麼做可能會導致\lstinline{malloc} 到不夠連續的區間、致使 locality 變差、另外，多次的 \lstinline{malloc} 可能會對效能造成負荷。
+
+因此，我考慮將這部份改成先 \lstinline{malloc} 所有需要的記憶體後、再一行一行的分配的 \lstinline{row_pointers} 這個紀錄各行指標的陣列。
+
+當然，結果並不理想，推測的原因有：
+\begin{enumerate}
+  \item 因為 \lstinline{malloc} 本來就不是這裡的瓶頸（實測僅 40ms），因此這裡多次使用 \lstinline{malloc} 能優化的空間本來就不大。
+  \item \lstinline{malloc} 的更底層其實也是先預分配一大塊空間，因此對於分配到不連續空間的機會其實不高（尤其我們是連續的呼叫 \lstinline{malloc}）。
+\end{enumerate}
+\section*{Problem 2.}
+個人覺得這份作業最令人煩惱的點是不知道怎樣的表現才會是足夠的，為此，我稍微做了一些計算：以第三張測試圖片為例，在原本不做任何修改的情況下，主要邏輯部份（\lstinline{adaptiveFilterRGB}）花費了約 3 秒，而我們有 8 個 thread，因此最理想狀況我們也必須要花費 375ms 的運算時間。考量到 multithread 的 overhead 以及某些不適合平行化的部份，個人認為 700ms（4.28x）已經是足夠好的成果了。
+
+另外，這份程式碼很大的 overhead 會是在 i/o 的部份，因此也針對優化 i/o 執行時間的部份做了一番調查：
+\begin{enumerate}
+  \item 對 png read/write 做平行化：由於這牽涉到一堆壓縮技術與 png 檔案格式，評估投資報酬率過低，因此不做嘗試
+  \item 翻閱 libpng 的文件後，發現壓縮等級對於執行效率是有一定程度的幫助的，因此直接將壓縮關閉（\lstinline{level=0}），果然在 i/o 的部份得到了顯著的進步（約 2x）。
+  \item 經討論，猜測 \lstinline{mmap} 可能可以加快 i/o 速度、而我們也可以針對 \lstinline{memcpy} 的地方再去搞平行化來加速，但我實際用上 \lstinline{mmap} （不含平行處理的部份）後發現他的 overhead 甚至導致速度便慢、也發現 \lstinline{libpng} 實際上在呼叫 \lstinline{read/write} 時的資料大小可能相當的小，平行化造成的負擔可能還比收益還要來的多。因此最後也決定放棄。
+\end{enumerate}
+
+最後一點就是有時候台灣杉上面的 workload 太多，導致有時候很難確定是自己的效率真的不好還是運氣不好導致的，為此我寫了短短的 \lstinline{bash} 來批量測試並以平均時間來作為效能的評估指標。
+\section*{Problem 3.}
+\subsection*{OpenMP}
+OpenMp 最大的好處就是方便，單純，只要用一些相當簡單的方式就可以得到很不錯的結果。然而，方便的代價就是他的靈活度並沒有到真的相當高，雖然已經可以對付大部分的情況，但對於某些情況下仍是有些不足的，像是這次作業我曾經想要去用 openmp 來分段平行跑一段 memcpy，但找不到很適合這個情況的關鍵字，稍微處理了一下資料來配合 omp for 的處理情境也不會比 pthread 還要輕鬆到哪裡去。
+
+\subsection*{pthread}
+相對的，pthread 用起來就是比較麻煩一點點，然而，你可以利用 pthread 作到比較細節的同步工作，彈性比 openmp 還要大上不少。
+
+\subsection*{Summary}
+整理來說，OpenMp 算是比較 high-level 的 multi-threading 工具、而 pthread 就是比較 low-level 一點的，兩者實際上適合的使用情境也有點不同，OpenMp 適合的是比較單純的狀況，像是對 for-loop 做 multi-threading 這種，而 pthread 則是適合去對比較具體的 task 去做 parallel，像是 server 要用 thread 去處理請求的情境。
+\newpage
+\section*{Problem 4.}
+以下是 \href{https://github.com/seanhuang1228/pp_hw1/blob/c368725ae0977416a67633079d386f397be79fec/setting1.cpp}{這份程式碼} （我希望作業死線結束後我會記得把他 public）以提供的 \lstinline{Makefile} 去編譯後，分別用 1, 2, 4, 8 顆核心去跑出來的結果（\lstinline{num_of_thread} 有做相對應的調整、4 顆核心就只會開到 4 個 thread）
+
+\begin{figure}[h]
+  \begin{center}
+    \includegraphics[width=0.5\textwidth]{asset/statistic.png}
+  \end{center}
+  \caption{Statistic}
+\end{figure}
+
+圖片中的 total time 指的是包含 io 的花費時間、main time 則是只有 \lstinline{adaptiveFilterRGB} 所花費的時間，基本上我們沒有對 i/o 去做平行化，所以完全可以接受的，紅線並不是一個線性關係。
+
+然而，扣除 i/o 所花費的時間後的藍線，實際上也並不是一個線性關係（應該說不是反比關係），就算要除去序列處理的部份、只考慮四種設定之間的時間差的話也不符合理論值（1 核跟 2 核的時間差應該要是 2 核跟 4 核的兩倍）。
+
+再由於這裡的數據是我跑了 20 次取平均後的結果，雖然沒有很多次，但應該對機器 workload 導致的誤差量有一定程度的減緩，所以也不應歸為機器 workload 的影響。
+
+經由與另一名修課同學林鈺翔的討論後，推測有可能是因為圖片上的亮度分佈不均、而亮度不均就會影響到卷積所使用的矩陣大小、進而造成每個 thread 倍分配到的工作量有一點點的差異，始得花費時間並不是呈現理論值的線性關係。
+\section*{Problem 5.}
+建議往後的作業可以有個 baseline，或至少可以是給一個可以拿到八成分數的 baseline、剩下的 2 成再由 performance 來決定，不然的話大家為了分數最終都只能朝向 i/o 的地方去做努力而已，而且當大家都開始做一些不是重點的優化時，也沒辦法從計分版推測自己的作法是否還需要改進（不知道其他人是真的有比較好的平行方式還是他們只是單純的找到了很有效的妖術），造成有一點人心惶惶的狀態。
+
+但這份作業中發想各種可能然後做各種測試的感覺是還滿好玩的就是了。
+\end{document}
