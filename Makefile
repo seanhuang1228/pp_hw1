@@ -6,8 +6,8 @@ all: hw1
 hw1: hw1.cpp
 	$(CXX) $(CXXFLAGS) -o hw1 hw1.cpp -lpng
 
-run: hw1
-	srun -A ACD113119 -n1 -c8 ./hw1 case/input_1.png out/output_1.png
+test:
+	$(CXX) $(CXXFLAGS) -DDEBUG hw1 hw1.cpp -lpng
 
 clean:
 	rm -f hw1

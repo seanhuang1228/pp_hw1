@@ -233,7 +233,9 @@ int main(int argc, char **argv) {
               << std::endl;
     return -1;
   }
-  // auto start_all = std::chrono::high_resolution_clock::now();
+#ifdef DEBUG
+  auto start_all = std::chrono::high_resolution_clock::now();
+#endif
   char *input_file = argv[1];
   char *output_file = argv[2];
 
@@ -245,21 +247,27 @@ int main(int argc, char **argv) {
   int width = inputImage[0].size();
 
   std::vector<std::vector<RGB>> outputImage(height, std::vector<RGB>(width));
+#ifdef DEBUG
   // auto start = std::chrono::high_resolution_clock::now();
+#endif
 
   adaptiveFilterRGB(inputImage, outputImage, height, width);
 
+#ifdef DEBUG
   // adaptiveFilterRGB_parallel(inputImage, outputImage, height, width);
   // auto end = std::chrono::high_resolution_clock::now();
   // std::chrono::duration<double> elapsed_seconds = end - start;
   // std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0 << "
   // ms" << std::endl;
+#endif
 
   write_png_file(output_file, outputImage);
+#ifdef DEBUG
   // auto end_all = std::chrono::high_resolution_clock::now();
   // elapsed_seconds = end_all - start_all;
   // std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0 <<
   // " ms" << std::endl;
+#endif
 
   return 0;
 }
