@@ -113,6 +113,7 @@ void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
   }
 
   png_init_io(png, fp);
+  png_set_compression_level(png, 0);
   png_read_info(png, info);
 
   int width = png_get_image_width(png, info);
@@ -204,6 +205,7 @@ void write_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
   png_set_IHDR(png, info, width, height, 8, PNG_COLOR_TYPE_RGB,
                PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
                PNG_FILTER_TYPE_DEFAULT);
+  png_set_compression_level(png, 0);
   png_write_info(png, info);
 
   png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
@@ -257,16 +259,16 @@ int main(int argc, char **argv) {
   // adaptiveFilterRGB_parallel(inputImage, outputImage, height, width);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> elapsed_seconds = end - start;
-  std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0 << 
-	  " ms" << std::endl;
+  std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0
+            << " ms" << std::endl;
 #endif
 
   write_png_file(output_file, outputImage);
 #ifdef DEBUG
   auto end_all = std::chrono::high_resolution_clock::now();
   elapsed_seconds = end_all - start_all;
-  std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0 <<
-	  " ms" << std::endl;
+  std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0
+            << " ms" << std::endl;
 #endif
 
   return 0;
