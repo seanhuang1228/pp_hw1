@@ -66,9 +66,17 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   std::vector<std::vector<int>> tempGreen(height, std::vector<int>(width));
   std::vector<std::vector<int>> tempBlue(height, std::vector<int>(width));
 
-  applyFilterToChannel(redChannel, tempRed, kernelSizes, height, width);
-  applyFilterToChannel(greenChannel, tempGreen, kernelSizes, height, width);
-  applyFilterToChannel(blueChannel, tempBlue, kernelSizes, height, width);
+#pragma omp parallel sections
+  {
+#pragma omp section
+    { applyFilterToChannel(redChannel, tempRed, kernelSizes, height, width); }
+#pragma omp section
+    {
+      applyFilterToChannel(greenChannel, tempGreen, kernelSizes, height, width);
+    }
+#pragma omp section
+    { applyFilterToChannel(blueChannel, tempBlue, kernelSizes, height, width); }
+  }
 
   for (int x = 0; x < height; x++) {
     for (int y = 0; y < width; y++) {
@@ -257,16 +265,16 @@ int main(int argc, char **argv) {
   // adaptiveFilterRGB_parallel(inputImage, outputImage, height, width);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> elapsed_seconds = end - start;
-  std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0 << 
-	  " ms" << std::endl;
+  std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0
+            << " ms" << std::endl;
 #endif
 
   write_png_file(output_file, outputImage);
 #ifdef DEBUG
   auto end_all = std::chrono::high_resolution_clock::now();
   elapsed_seconds = end_all - start_all;
-  std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0 <<
-	  " ms" << std::endl;
+  std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0
+            << " ms" << std::endl;
 #endif
 
   return 0;
