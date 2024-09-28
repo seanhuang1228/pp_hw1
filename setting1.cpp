@@ -1,9 +1,14 @@
 #include <algorithm>
 #include <chrono>
+#include <cstring>
+#include <fcntl.h>
 #include <iostream>
 #include <png.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 // #include <pthread.h>
 
@@ -13,6 +18,26 @@ struct RGB {
 
 double calculateLuminance(const RGB &pixel) {
   return 0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b;
+}
+
+void read_from_memory(png_structp png_ptr, png_bytep out_byte,
+                      png_size_t byte_count_to_read) {
+  void **src = (void **)png_get_io_ptr(png_ptr);
+  void *des = (void *)out_byte;
+  const size_t byte_read = (size_t)byte_count_to_read;
+
+  memcpy(des, *src, byte_read);
+  *(long long *)src += byte_read;
+}
+
+void write_from_memory(png_structp png_ptr, png_bytep out_byte,
+                       png_size_t byte_count_to_read) {
+  void **des = (void **)png_get_io_ptr(png_ptr);
+  void *src = (void *)out_byte;
+  const size_t byte_read = (size_t)byte_count_to_read;
+
+  memcpy(*des, src, byte_read);
+  *(long long *)des += byte_read;
 }
 
 int determineKernelSize(double brightness) { return brightness > 128 ? 10 : 5; }
@@ -79,10 +104,11 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   }
 }
 
-void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
-  FILE *fp = fopen(file_name, "rb");
+size_t read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
+  int fd = open(file_name, O_RDONLY);
+  struct stat statbuf;
 
-  if (!fp) {
+  if (!fd) {
     std::cerr << "Error: Cannot open file " << file_name << std::endl;
     exit(EXIT_FAILURE);
   }
@@ -92,7 +118,7 @@ void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
 
   if (!png) {
     std::cerr << "Error: Cannot create PNG read structure" << std::endl;
-    fclose(fp);
+    close(fd);
     exit(EXIT_FAILURE);
   }
 
@@ -101,18 +127,22 @@ void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
   if (!info) {
     std::cerr << "Error: Cannot create PNG info structure" << std::endl;
     png_destroy_read_struct(&png, nullptr, nullptr);
-    fclose(fp);
+    close(fd);
     exit(EXIT_FAILURE);
   }
 
   if (setjmp(png_jmpbuf(png))) {
     std::cerr << "Error during PNG creation" << std::endl;
     png_destroy_read_struct(&png, &info, nullptr);
-    fclose(fp);
+    close(fd);
     exit(EXIT_FAILURE);
   }
 
-  png_init_io(png, fp);
+  fstat(fd, &statbuf);
+  void *start = mmap(0, statbuf.st_size, PROT_READ, MAP_SHARED, fd, 8);
+  void *io_ptr = start;
+
+  png_set_read_fn(png, &io_ptr, read_from_memory);
   png_read_info(png, info);
 
   int width = png_get_image_width(png, info);
@@ -148,7 +178,8 @@ void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
   }
 
   png_read_image(png, row_pointers);
-  fclose(fp);
+  munmap(start, statbuf.st_size);
+  close(fd);
 
   image.resize(height, std::vector<RGB>(width));
 
@@ -164,24 +195,24 @@ void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
   }
   free(row_pointers);
   png_destroy_read_struct(&png, &info, nullptr);
+
+  return statbuf.st_size;
 }
 
-void write_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
+void write_png_file(char *file_name, std::vector<std::vector<RGB>> &image,
+                    size_t input_sz) {
   int width = image[0].size();
   int height = image.size();
 
-  FILE *fp = fopen(file_name, "wb");
-  if (!fp) {
-    std::cerr << "Error: Cannot open file " << file_name << std::endl;
-    exit(EXIT_FAILURE);
-  }
+  int fd = open(file_name, O_CREAT | O_RDWR, (mode_t)0644);
+  struct stat statbuf;
 
   png_structp png =
       png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
 
   if (!png) {
     std::cerr << "Error: Cannot create PNG write structure" << std::endl;
-    fclose(fp);
+    close(fd);
     exit(EXIT_FAILURE);
   }
 
@@ -189,18 +220,27 @@ void write_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
   if (!info) {
     std::cerr << "Error: Cannot create PNG info structure" << std::endl;
     png_destroy_write_struct(&png, nullptr);
-    fclose(fp);
+    close(fd);
     exit(EXIT_FAILURE);
   }
 
   if (setjmp(png_jmpbuf(png))) {
     std::cerr << "Error during PNG creation" << std::endl;
     png_destroy_write_struct(&png, &info);
-    fclose(fp);
+    close(fd);
     exit(EXIT_FAILURE);
   }
 
-  png_init_io(png, fp);
+  ftruncate(fd, input_sz * 2);
+  fstat(fd, &statbuf);
+#ifdef DEBUG
+  std::cerr << "new file size: " << statbuf.st_size << '\n';
+#endif
+  void *start =
+      mmap(0, statbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  void *io_ptr = start;
+
+  png_set_write_fn(png, &io_ptr, write_from_memory, NULL);
   png_set_IHDR(png, info, width, height, 8, PNG_COLOR_TYPE_RGB,
                PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
                PNG_FILTER_TYPE_DEFAULT);
@@ -224,7 +264,11 @@ void write_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
 
   free(row_pointers);
   png_destroy_write_struct(&png, &info);
-  fclose(fp);
+
+  size_t output_sz = *(long long *)io_ptr - *(long long *)start;
+  munmap(start, statbuf.st_size);
+  ftruncate(fd, output_sz);
+  close(fd);
 }
 
 int main(int argc, char **argv) {
@@ -241,7 +285,7 @@ int main(int argc, char **argv) {
 
   std::vector<std::vector<RGB>> inputImage;
 
-  read_png_file(input_file, inputImage);
+  size_t file_sz = read_png_file(input_file, inputImage);
 
   int height = inputImage.size();
   int width = inputImage[0].size();
@@ -257,16 +301,16 @@ int main(int argc, char **argv) {
   // adaptiveFilterRGB_parallel(inputImage, outputImage, height, width);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> elapsed_seconds = end - start;
-  std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0 << 
-	  " ms" << std::endl;
+  std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0
+            << " ms" << std::endl;
 #endif
 
-  write_png_file(output_file, outputImage);
+  write_png_file(output_file, outputImage, file_sz);
 #ifdef DEBUG
   auto end_all = std::chrono::high_resolution_clock::now();
   elapsed_seconds = end_all - start_all;
-  std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0 <<
-	  " ms" << std::endl;
+  std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0
+            << " ms" << std::endl;
 #endif
 
   return 0;
