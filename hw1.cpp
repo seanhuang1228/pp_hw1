@@ -1,29 +1,14 @@
 #include <algorithm>
 #include <chrono>
-#include <cstring>
-#include <fcntl.h>
 #include <iostream>
-#include <omp.h>
 #include <png.h>
-#include <pngconf.h>
-#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <vector>
+// #include <pthread.h>
 
 struct RGB {
   int r, g, b;
-};
-
-struct ThreadArgs {
-  std::vector<std::vector<int>> &input;
-  std::vector<std::vector<int>> &output;
-  std::vector<std::vector<int>> &kernelSizes;
-  int height;
-  int width;
 };
 
 double calculateLuminance(const RGB &pixel) {
@@ -31,63 +16,17 @@ double calculateLuminance(const RGB &pixel) {
 }
 
 int determineKernelSize(double brightness) { return brightness > 128 ? 10 : 5; }
-
-void read_from_memory(png_structp png_ptr, png_bytep out_byte,
-                      png_size_t byte_count_to_read) {
-  void **src = (void **)png_get_io_ptr(png_ptr);
-  void *des = (void *)out_byte;
-  const size_t byte_read = (size_t)byte_count_to_read;
-
-  // std::cerr << (long long)*src << '\n';
-
-  memcpy(des, *src, byte_read);
-  *(long long *)src += (size_t)byte_count_to_read;
-}
-
-void *pApplyFilterToChannel(void *arg) {
-  ThreadArgs thread_arg = *(ThreadArgs *)arg;
-  std::vector<std::vector<int>> &input = thread_arg.input;
-  std::vector<std::vector<int>> &output = thread_arg.output;
-  std::vector<std::vector<int>> &kernelSizes = thread_arg.kernelSizes;
-  int height = thread_arg.height;
-  int width = thread_arg.width;
-
-  for (int x = 0; x < height; x++) {
-#pragma omp parallel for
-    for (int y = 0; y < width; y++) {
-      int kernelSize = kernelSizes[x][y];
-      int kernelRadius = kernelSize / 2;
-      double sum = 0.0;
-      double filteredPixel = 0.0;
-
-      for (int i = -kernelRadius; i <= kernelRadius; i++) {
-        for (int j = -kernelRadius; j <= kernelRadius; j++) {
-          int pixelX = std::min(std::max(x + i, 0), height - 1);
-          int pixelY = std::min(std::max(y + j, 0), width - 1);
-          filteredPixel += input[pixelX][pixelY];
-          sum += 1.0;
-        }
-      }
-
-      output[x][y] = static_cast<int>(filteredPixel / sum);
-    }
-  }
-
-  return (void *)0;
-}
-
 void applyFilterToChannel(const std::vector<std::vector<int>> &input,
                           std::vector<std::vector<int>> &output,
                           const std::vector<std::vector<int>> &kernelSizes,
                           int height, int width) {
+#pragma omp parallel for num_threads(8)
   for (int x = 0; x < height; x++) {
-#pragma omp parallel for
     for (int y = 0; y < width; y++) {
       int kernelSize = kernelSizes[x][y];
       int kernelRadius = kernelSize / 2;
       double sum = 0.0;
       double filteredPixel = 0.0;
-
       for (int i = -kernelRadius; i <= kernelRadius; i++) {
         for (int j = -kernelRadius; j <= kernelRadius; j++) {
           int pixelX = std::min(std::max(x + i, 0), height - 1);
@@ -96,7 +35,6 @@ void applyFilterToChannel(const std::vector<std::vector<int>> &input,
           sum += 1.0;
         }
       }
-
       output[x][y] = static_cast<int>(filteredPixel / sum);
     }
   }
@@ -109,31 +47,18 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   std::vector<std::vector<int>> greenChannel(height, std::vector<int>(width));
   std::vector<std::vector<int>> blueChannel(height, std::vector<int>(width));
 
+#pragma omp parallel for num_threads(8)
   for (int x = 0; x < height; x++) {
-#pragma omp parallel for
     for (int y = 0; y < width; y++) {
       redChannel[x][y] = inputImage[x][y].r;
-    }
-  }
-
-  for (int x = 0; x < height; x++) {
-#pragma omp parallel for
-    for (int y = 0; y < width; y++) {
       greenChannel[x][y] = inputImage[x][y].g;
-    }
-  }
-
-  for (int x = 0; x < height; x++) {
-#pragma omp parallel for
-    for (int y = 0; y < width; y++) {
       blueChannel[x][y] = inputImage[x][y].b;
     }
   }
 
   std::vector<std::vector<int>> kernelSizes(height, std::vector<int>(width));
-
+#pragma omp parallel for num_threads(8)
   for (int x = 0; x < height; x++) {
-#pragma omp parallel for
     for (int y = 0; y < width; y++) {
       double brightness = calculateLuminance(inputImage[x][y]);
       kernelSizes[x][y] = determineKernelSize(brightness);
@@ -144,80 +69,54 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   std::vector<std::vector<int>> tempGreen(height, std::vector<int>(width));
   std::vector<std::vector<int>> tempBlue(height, std::vector<int>(width));
 
-  /*
-  ThreadArgs redArgs = {redChannel, tempRed, kernelSizes, height, width};
-  ThreadArgs greenArgs = {greenChannel, tempGreen, kernelSizes, height, width};
-  ThreadArgs blueArgs = {blueChannel, tempBlue, kernelSizes, height, width};
+  applyFilterToChannel(redChannel, tempRed, kernelSizes, height, width);
+  applyFilterToChannel(greenChannel, tempGreen, kernelSizes, height, width);
+  applyFilterToChannel(blueChannel, tempBlue, kernelSizes, height, width);
 
-  pthread_t red_thread;
-  pthread_t green_thread;
-  pthread_t blue_thread;
-
-  pthread_create(&red_thread, NULL, pApplyFilterToChannel, &redArgs);
-  pthread_create(&green_thread, NULL, pApplyFilterToChannel, &greenArgs);
-  pthread_create(&blue_thread, NULL, pApplyFilterToChannel, &blueArgs);
-
-  pthread_join(red_thread, nullptr);
-  pthread_join(green_thread, nullptr);
-  pthread_join(blue_thread, nullptr);
-  */
-
-#pragma omp parallel sections
-  {
-#pragma omp section
-    { applyFilterToChannel(redChannel, tempRed, kernelSizes, height, width); }
-#pragma omp section
-    {
-      applyFilterToChannel(greenChannel, tempGreen, kernelSizes, height, width);
-    }
-#pragma omp section
-    { applyFilterToChannel(blueChannel, tempBlue, kernelSizes, height, width); }
-  }
-
+#pragma omp parallel for num_threads(8)
   for (int x = 0; x < height; x++) {
-#pragma omp parallel for
     for (int y = 0; y < width; y++) {
       outputImage[x][y].r = tempRed[x][y];
-    }
-  }
-
-  for (int x = 0; x < height; x++) {
-#pragma omp parallel for
-    for (int y = 0; y < width; y++) {
       outputImage[x][y].g = tempGreen[x][y];
-    }
-  }
-
-  for (int x = 0; x < height; x++) {
-#pragma omp parallel for
-    for (int y = 0; y < width; y++) {
       outputImage[x][y].b = tempBlue[x][y];
     }
   }
 }
 
 void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
-  // FILE *fp = fopen(file_name, "rb");
-  int fdin = open(file_name, O_RDONLY);
-  struct stat statbuf;
+  FILE *fp = fopen(file_name, "rb");
 
-  fstat(fdin, &statbuf);
-  void *io_ptr = mmap(0, statbuf.st_size, PROT_READ, MAP_SHARED, fdin, 0);
+  if (!fp) {
+    std::cerr << "Error: Cannot open file " << file_name << std::endl;
+    exit(EXIT_FAILURE);
+  }
 
   png_structp png =
       png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+
+  if (!png) {
+    std::cerr << "Error: Cannot create PNG read structure" << std::endl;
+    fclose(fp);
+    exit(EXIT_FAILURE);
+  }
+
   png_infop info = png_create_info_struct(png);
+
+  if (!info) {
+    std::cerr << "Error: Cannot create PNG info structure" << std::endl;
+    png_destroy_read_struct(&png, nullptr, nullptr);
+    fclose(fp);
+    exit(EXIT_FAILURE);
+  }
 
   if (setjmp(png_jmpbuf(png))) {
     std::cerr << "Error during PNG creation" << std::endl;
     png_destroy_read_struct(&png, &info, nullptr);
-    close(fdin);
+    fclose(fp);
     exit(EXIT_FAILURE);
   }
 
-  png_set_sig_bytes(png, 0);
-  // std::cerr << "init: " << (long long)io_ptr << '\n';
-  png_set_read_fn(png, &io_ptr, read_from_memory);
+  png_init_io(png, fp);
   png_set_compression_level(png, 0);
   png_read_info(png, info);
 
@@ -247,18 +146,19 @@ void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
     png_set_gray_to_rgb(png);
 
   png_read_update_info(png, info);
-
   png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
-  // std::cerr << png_get_rowbytes(png, info) << '\n';
+
+#pragma omp parallel for num_threads(8)
   for (int y = 0; y < height; y++) {
     row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png, info));
   }
 
   png_read_image(png, row_pointers);
-
-  close(fdin);
+  fclose(fp);
 
   image.resize(height, std::vector<RGB>(width));
+
+#pragma omp parallel for num_threads(8)
   for (int y = 0; y < height; y++) {
     png_bytep row = row_pointers[y];
     for (int x = 0; x < width; x++) {
@@ -270,7 +170,6 @@ void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
     free(row_pointers[y]);
   }
   free(row_pointers);
-
   png_destroy_read_struct(&png, &info, nullptr);
 }
 
@@ -286,6 +185,7 @@ void write_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
 
   png_structp png =
       png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+
   if (!png) {
     std::cerr << "Error: Cannot create PNG write structure" << std::endl;
     fclose(fp);
@@ -314,12 +214,9 @@ void write_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
   png_set_compression_level(png, 0);
   png_write_info(png, info);
 
-  // long long rowbytes = png_get_rowbytes(png, info);
-  // png_byte *one_malloc = (png_byte *)malloc(rowbytes * height);
   png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
-  // std::cerr << png_get_rowbytes(png, info) << '\n';
+#pragma omp parallel for num_threads(8)
   for (int y = 0; y < height; y++) {
-    // row_pointers[y] = &one_malloc[y * rowbytes];
     row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png, info));
     for (int x = 0; x < width; x++) {
       row_pointers[y][x * 3] = image[y][x].r;
@@ -330,12 +227,12 @@ void write_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
 
   png_write_image(png, row_pointers);
   png_write_end(png, nullptr);
-
+#pragma omp parallel for num_threads(8)
   for (int y = 0; y < height; y++) {
     free(row_pointers[y]);
   }
-  free(row_pointers);
 
+  free(row_pointers);
   png_destroy_write_struct(&png, &info);
   fclose(fp);
 }
@@ -346,37 +243,41 @@ int main(int argc, char **argv) {
               << std::endl;
     return -1;
   }
-
-  // auto start_all = std::chrono::high_resolution_clock::now();
-
+#ifdef DEBUG
+  auto start_all = std::chrono::high_resolution_clock::now();
+#endif
   char *input_file = argv[1];
   char *output_file = argv[2];
 
   std::vector<std::vector<RGB>> inputImage;
+
   read_png_file(input_file, inputImage);
 
   int height = inputImage.size();
   int width = inputImage[0].size();
 
   std::vector<std::vector<RGB>> outputImage(height, std::vector<RGB>(width));
-
+#ifdef DEBUG
   auto start = std::chrono::high_resolution_clock::now();
+#endif
 
   adaptiveFilterRGB(inputImage, outputImage, height, width);
+
+#ifdef DEBUG
   // adaptiveFilterRGB_parallel(inputImage, outputImage, height, width);
-
   auto end = std::chrono::high_resolution_clock::now();
-
   std::chrono::duration<double> elapsed_seconds = end - start;
   std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0
-            << " ms " << std::endl;
+            << " ms" << std::endl;
+#endif
 
   write_png_file(output_file, outputImage);
-
+#ifdef DEBUG
   auto end_all = std::chrono::high_resolution_clock::now();
-  elapsed_seconds = end_all - start;
+  elapsed_seconds = end_all - start_all;
   std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0
             << " ms" << std::endl;
+#endif
 
   return 0;
 }
