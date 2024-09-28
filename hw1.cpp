@@ -38,9 +38,10 @@ void read_from_memory(png_structp png_ptr, png_bytep out_byte,
   void *des = (void *)out_byte;
   const size_t byte_read = (size_t)byte_count_to_read;
 
-  *(long long *)src += (size_t)byte_count_to_read;
+  // std::cerr << (long long)*src << '\n';
 
-  memcpy(des, src, byte_read);
+  memcpy(des, *src, byte_read);
+  *(long long *)src += (size_t)byte_count_to_read;
 }
 
 void *pApplyFilterToChannel(void *arg) {
@@ -215,7 +216,9 @@ void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
   }
 
   png_set_sig_bytes(png, 0);
-  png_set_read_fn(png, io_ptr, read_from_memory);
+  // std::cerr << "init: " << (long long)io_ptr << '\n';
+  png_set_read_fn(png, &io_ptr, read_from_memory);
+  png_set_compression_level(png, 0);
   png_read_info(png, info);
 
   int width = png_get_image_width(png, info);
@@ -246,7 +249,7 @@ void read_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
   png_read_update_info(png, info);
 
   png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
-  std::cerr << png_get_rowbytes(png, info) << '\n';
+  // std::cerr << png_get_rowbytes(png, info) << '\n';
   for (int y = 0; y < height; y++) {
     row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png, info));
   }
@@ -305,16 +308,16 @@ void write_png_file(char *file_name, std::vector<std::vector<RGB>> &image) {
   }
 
   png_init_io(png, fp);
-
   png_set_IHDR(png, info, width, height, 8, PNG_COLOR_TYPE_RGB,
                PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
                PNG_FILTER_TYPE_DEFAULT);
+  png_set_compression_level(png, 0);
   png_write_info(png, info);
 
   // long long rowbytes = png_get_rowbytes(png, info);
   // png_byte *one_malloc = (png_byte *)malloc(rowbytes * height);
   png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
-  std::cerr << png_get_rowbytes(png, info) << '\n';
+  // std::cerr << png_get_rowbytes(png, info) << '\n';
   for (int y = 0; y < height; y++) {
     // row_pointers[y] = &one_malloc[y * rowbytes];
     row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png, info));
@@ -364,16 +367,16 @@ int main(int argc, char **argv) {
 
   auto end = std::chrono::high_resolution_clock::now();
 
-  // std::chrono::duration<double> elapsed_seconds = end - start;
-  // std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0
-  //           << " ms " << std::endl;
+  std::chrono::duration<double> elapsed_seconds = end - start;
+  std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0
+            << " ms " << std::endl;
 
   write_png_file(output_file, outputImage);
 
-  // auto end_all = std::chrono::high_resolution_clock::now();
-  // elapsed_seconds = end_all - start;
-  // std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0
-  //           << " ms" << std::endl;
+  auto end_all = std::chrono::high_resolution_clock::now();
+  elapsed_seconds = end_all - start;
+  std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0
+            << " ms" << std::endl;
 
   return 0;
 }
