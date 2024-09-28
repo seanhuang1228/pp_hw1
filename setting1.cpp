@@ -49,7 +49,17 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   for (int x = 0; x < height; x++) {
     for (int y = 0; y < width; y++) {
       redChannel[x][y] = inputImage[x][y].r;
+    }
+  }
+
+  for (int x = 0; x < height; x++) {
+    for (int y = 0; y < width; y++) {
       greenChannel[x][y] = inputImage[x][y].g;
+    }
+  }
+
+  for (int x = 0; x < height; x++) {
+    for (int y = 0; y < width; y++) {
       blueChannel[x][y] = inputImage[x][y].b;
     }
   }
@@ -73,7 +83,15 @@ void adaptiveFilterRGB(const std::vector<std::vector<RGB>> &inputImage,
   for (int x = 0; x < height; x++) {
     for (int y = 0; y < width; y++) {
       outputImage[x][y].r = tempRed[x][y];
+    }
+  }
+  for (int x = 0; x < height; x++) {
+    for (int y = 0; y < width; y++) {
       outputImage[x][y].g = tempGreen[x][y];
+    }
+  }
+  for (int x = 0; x < height; x++) {
+    for (int y = 0; y < width; y++) {
       outputImage[x][y].b = tempBlue[x][y];
     }
   }
@@ -257,16 +275,16 @@ int main(int argc, char **argv) {
   // adaptiveFilterRGB_parallel(inputImage, outputImage, height, width);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> elapsed_seconds = end - start;
-  std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0 << 
-	  " ms" << std::endl;
+  std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0
+            << " ms" << std::endl;
 #endif
 
   write_png_file(output_file, outputImage);
 #ifdef DEBUG
   auto end_all = std::chrono::high_resolution_clock::now();
   elapsed_seconds = end_all - start_all;
-  std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0 <<
-	  " ms" << std::endl;
+  std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0
+            << " ms" << std::endl;
 #endif
 
   return 0;
