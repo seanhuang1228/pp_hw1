@@ -31,7 +31,9 @@ void read_from_memory(png_structp png_ptr, png_bytep out_byte,
 #pragma omp parallel for num_threads(8)
   for (int i = 0; i < 8; ++i) {
     long long curr_src = *(long long *)src + share_size * i;
-    memcpy(des, (void *)src, share_size + (i == 7 ? remaining : 0));
+    long long curr_des = *(long long *)des + share_size * i;
+    memcpy((void *)curr_des, (void *)curr_src,
+           share_size + (i == 7 ? remaining : 0));
   }
 
   *(long long *)src += byte_read;
@@ -47,8 +49,10 @@ void write_to_memory(png_structp png_ptr, png_bytep out_byte,
   size_t remaining = byte_write % 8;
 #pragma omp parallel for num_threads(8)
   for (int i = 0; i < 8; ++i) {
+    long long curr_src = *(long long *)src + share_size * i;
     long long curr_des = *(long long *)des + share_size * i;
-    memcpy((void *)des, src, share_size + (i == 7 ? remaining : 0));
+    memcpy((void *)curr_des, (void *)curr_src,
+           share_size + (i == 7 ? remaining : 0));
   }
 
   *(long long *)des += byte_write;
