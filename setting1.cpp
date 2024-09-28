@@ -21,6 +21,7 @@ void applyFilterToChannel(const std::vector<std::vector<int>> &input,
                           const std::vector<std::vector<int>> &kernelSizes,
                           int height, int width) {
   for (int x = 0; x < height; x++) {
+#pragma omp parallel for num_threads(5)
     for (int y = 0; y < width; y++) {
       int kernelSize = kernelSizes[x][y];
       int kernelRadius = kernelSize / 2;
@@ -257,16 +258,16 @@ int main(int argc, char **argv) {
   // adaptiveFilterRGB_parallel(inputImage, outputImage, height, width);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> elapsed_seconds = end - start;
-  std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0 << 
-	  " ms" << std::endl;
+  std::cout << "Main Program Time: " << elapsed_seconds.count() * 1000.0
+            << " ms" << std::endl;
 #endif
 
   write_png_file(output_file, outputImage);
 #ifdef DEBUG
   auto end_all = std::chrono::high_resolution_clock::now();
   elapsed_seconds = end_all - start_all;
-  std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0 <<
-	  " ms" << std::endl;
+  std::cout << "Total Program Time: " << elapsed_seconds.count() * 1000.0
+            << " ms" << std::endl;
 #endif
 
   return 0;
